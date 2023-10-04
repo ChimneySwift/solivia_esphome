@@ -1,0 +1,157 @@
+# This was originally made by htvekov https://github.com/htvekov/solivia_esphome
+# Then it was edited by it-koncept to read 3 G3 inverters https://github.com/it-koncept/Solvia-Inverter-G3
+# Then I modified it to work for my single inverter setup#
+#
+# Remember to copy the Custom Component solivia.h file to the ESPHome folder in
+# Home Assistant !!
+#
+# This config sends commands to the inverter !!
+
+esphome:
+  name: # Set a name here
+  friendly_name: # Set a name here
+  includes:
+    - solivia-G3.h
+
+# This may be useful for testing as you can easily see sensor values and log output from a phone, uncomment to use
+#web_server:
+#  port: 80
+#  auth:
+#    username: 'esp'
+#    password: 'esphome'
+
+# Board we are using, replace this with what's in your old config
+esp8266:
+  board: esp01_1m
+    
+# Enable logging
+logger:
+  level: DEBUG # Change to VERBOSE for more info
+  baud_rate: 0 # Disable logging via serial as we are using hardware serial
+
+# Enable Home Assistant API - Replace with your old config
+api:
+  encryption:
+    key: 
+
+ota:
+
+# Replace with your old config
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+captive_portal:
+
+# Comment this out if you have a solivia gateway. This sends the read command every
+# 10s to the inverter
+time:
+  - platform: homeassistant
+    id: esptime
+  - platform: sntp
+    on_time:
+       # Request package every 10 seconds from inverter at slave address: 0x01
+      - seconds: /10
+        then:
+          - uart.write: [0x02, 0x05, 0x01, 0x02, 0x60, 0x01, 0x85, 0xFC, 0x03]
+
+binary_sensor:
+  - platform: status
+    name: "Solivia Node Status"
+    id: solivia_status
+ 
+uart:
+  id: mod_bus
+  # tx_pin: 17 # Typical tx pin for hardware UART#2 on ESP32 modules
+  # rx_pin: 16 # Typical rx pin for hardware UART#2 on ESP32 modules
+  tx_pin: 1 # D2 ESP8266 tx pin for soft serial uart
+  rx_pin: 
+    number: 3 # D1 ESP8266 rx pin for soft serial uart
+    #inverted: true # Uncomment to invert the RX pin if you get inverted readings
+    
+  rx_buffer_size: 1024
+  baud_rate: 19200 # Default baud rate, this may be changed so check your inverter setup menu
+  parity: NONE
+  stop_bits: 1
+  #debug: # Uncomment to print the serial read/write into the logs
+
+sensor:
+- platform: custom
+  lambda: |-
+    auto delta = new soliviag3(id(mod_bus));
+    App.register_component(delta);
+    return {delta->pv1_ac_power, delta->pv1_d_yield, delta->pv1_dc_a, delta->pv1_dc_v, delta->pv1_ac_a, delta->pv1_ac_v, delta->pv1_hs_1, delta->pv1_hs_2, delta->pv1_iso_plus, delta->pv1_iso_minus};
+  sensors:
+  - name: "PV1 AC power"
+    icon: mdi:power-plug
+    device_class: energy
+    unit_of_measurement: W
+    accuracy_decimals: 0
+    # Frequent update, as sensor is used to calculate consumption with iem3155 sensor.total_active_power
+    filters:
+    - throttle: 10s 
+  
+  - name: "PV1 Solar daily yield"
+    icon: mdi:chart-line
+    device_class: energy
+    # Set state_class in order for HA to use sensor in the Energy component
+    state_class: total_increasing
+    unit_of_measurement: Wh
+    accuracy_decimals: 0
+    filters:
+    - throttle: 10s
+    - multiply: 10
+  
+  - name: "PV1 DC current"
+    device_class: energy
+    unit_of_measurement: A
+    accuracy_decimals: 1
+    filters:
+    - throttle: 10s
+    - multiply: 0.1
+  
+  - name: "PV1 DC voltage"
+    device_class: energy
+    unit_of_measurement: V
+    accuracy_decimals: 0
+    filters:
+    - throttle: 10s
+  
+  - name: "PV1 AC current"
+    device_class: energy
+    unit_of_measurement: A
+    accuracy_decimals: 1
+    filters:
+    - throttle: 10s
+    - multiply: 0.1
+  
+  - name: "PV1 AC voltage"
+    device_class: energy
+    unit_of_measurement: V
+    accuracy_decimals: 0
+    filters:
+    - throttle: 10s
+  
+  - name: "PV1 Heat sink #1"
+    device_class: temperature
+    unit_of_measurement: °C
+    filters:
+    - throttle: 10s
+  
+  - name: "PV1 Heat sink #2"
+    device_class: temperature
+    unit_of_measurement: °C
+    filters:
+    - throttle: 10s
+
+  - name: "PV1 ISO +"
+    device_class: energy
+    unit_of_measurement: kΩ
+    filters:
+    - throttle: 10s
+  
+  - name: "PV1 ISO -"
+    device_class: energy
+    unit_of_measurement: kΩ
+    filters:
+    - throttle: 10s
